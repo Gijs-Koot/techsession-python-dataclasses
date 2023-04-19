@@ -1,0 +1,312 @@
+* What is it
+
+- Automatically add a constructor to a user defined class
+
+#+begin_src jupyter-python :session main
+from dataclasses import dataclass
+
+@dataclass
+class User:
+
+   name: str
+   score: int
+
+@dataclass
+class Boss(User):
+   level: int
+
+boss = Boss(name="Marieke", score=5, level=10)
+
+b = User("Bernie", 31)
+c = User("Bernie", 31)
+
+boss
+#+end_src
+
+#+RESULTS:
+: Boss(name='Marieke', score=5, level=10)
+
+* Why dataclasses
+
+- Also adds `__repr__` and `__eq__`
+
+#+begin_src jupyter-python :session main
+class Userc:
+    def __init__(self, name: str, score: int):
+        self.name = name
+        self.score = score
+
+    def greeting(self):
+        print(f"Hi my name is {self.name} and my score is {self.score / 100:.0%}")
+
+
+
+
+u = Userc("Joe", 23)
+s = Userc("Joe", 23)
+
+u == s
+#+end_src
+
+#+RESULTS:
+: False
+
+* Why dataclasses
+
+- You want this if you start creating tuples, dicts or other structures that belong together
+
+#+begin_src jupyter-python :session main
+users = [("Anna", .25), ("Bernie", .58), ("Joe", .89)]
+filtered_users = [u for u in users if u[1] > .3]
+
+def greeting(a: User):
+    print(f"{a.name} has score {a.score}")
+
+for u in users:
+    greeting(u)
+#+end_src
+
+#+RESULTS:
+: Anna has score 0.25
+: Bernie has score 0.58
+: Joe has score 0.89
+
+#+begin_src jupyter-python :session main
+@dataclass
+class User:
+
+   name: str
+   score: int = 10
+
+users = [{"name": "Joe", "score": .45}, {"name": "Bert", "score": .34}]
+users_dc = [User(**d) for d in users]
+print(users_dc)
+#+end_src
+
+#+RESULTS:
+: [User(name='Joe', score=0.45), User(name='Bert', score=0.34)]
+
+
+* History
+
+- Proposed in https://www.python.org/dev/peps/pep-0557/
+- Advantages over alternatives
+  - Better support for typing hints
+  - Support for default values
+  - Support for inheritance
+
+#+begin_src jupyter-python :session main
+from collections import namedtuple
+
+UserT = namedtuple('UserT', ['name', 'score'])
+
+m = UserT("Michael", 5)
+#+end_src
+
+#+RESULTS:
+: UserT(name='Michael', score=5)
+
+* Dict serialization
+
+- You can use `asdict` to generate simple Python dicts
+- Useful for `json` or `csv` storage
+
+#+begin_src jupyter-python :session main 
+from dataclasses import asdict
+
+d = asdict(a)
+print(d)
+#+end_src
+
+#+RESULTS:
+: {'name': 'Anna', 'score': 10}
+
+- For simple classes, asterisk can be useful for creation
+
+#+begin_src jupyter-python :session main
+User(**d)
+#+end_src
+
+#+RESULTS:
+: User(name='Anna', score=10)
+
+* Example
+
+- In `woco_data_collection.streetview.api`
+
+#+begin_src jupyter-python :session main
+@dataclass
+class StreetViewPanorama:
+    """
+    A panorama is a location. It is not yet an image.
+    """
+
+    id: str
+    lat: float
+    lng: float
+    date: str
+#+end_src
+
+* Example: calculations with __post_init__
+
+#+begin_src jupyter-python
+from dataclasses import field
+from shapely import geometry
+
+class PanoView:
+    """
+    Represents a combination of wall and camera position.
+    """
+
+    cam_rds: geometry.Point
+    ref_rds: geometry.Point
+    wall_rds: geometry.LineString
+
+    panorama_id: str
+    heading: float
+    building_height: float
+
+    _wall_3d: geometry.LinearRing = field(init=False)
+
+    def __post_init__(self):
+        # attach wall3d coords
+
+        _wall = download_masks_util.create_wall(self.wall_rds, self.building_height)
+        self._wall_3d = _wall
+
+pv = PanoView(cam_rds, ref_rds, wall_rds, pano_id, 50.5, 10.3)
+pv._wall_3d 
+#+end_src
+
+* Example: alternate constructors with classmethod
+
+#+begin_src jupyter-python :session main
+@dataclass
+class User:
+
+    name: str
+    score: int
+
+    def greeting(self):
+        print(self)
+        print("hi")
+
+    @classmethod
+    def from_str(cls, txt: str) -> User:
+        """
+        Parses user from strings like "Kamala:45"
+        """
+        print(cls)
+        return cls(*txt.split(":"))
+
+andrew = User.from_str("Andrew:189")
+andrew.greeting()
+
+#+end_src
+
+#+RESULTS:
+: <class '__main__.User'>
+: User(name='Andrew', score='189')
+: hi
+
+* Code along
+
+#+begin_src sh
+ls ./src/*.py
+head -2 data/boxes.csv
+#+end_src
+
+#+RESULTS:
+| ./src/boxes.py                                                                                   |
+| ./src/test_boxes.py                                                                              |
+| 0545100000340603,937.8735961914062,822.6723022460938,1155.985595703125,931.1412353515625,Kozijn  |
+| 0545100000340603,934.614013671875,807.4380493164062,1156.7283935546875,1170.0447998046875,Kozijn |
+
+1. Create a dataclass for boxes with a `area` function
+2. Write a function `read_csv` for generating these boxes
+   - use `pandas.read_csv`
+   - use `pandas.DataFrame.iterrows()`
+3. (*) Write a function `group_by_building`
+   - use `collections.defaultdict`
+
+* Solution: dataclass
+
+#+begin_src jupyter-python :session main
+from dataclasses import dataclass
+from pathlib import Path
+
+categories = ["Kozijn", "Deur"]
+
+@dataclass
+class Box:
+    bag_id: str
+    xmin: float
+    xmax: float
+    ymin: float
+    ymax: float
+    cat: str
+
+    def area(self):
+        return (self.xmax - self.xmin) * (self.ymax - self.ymin)
+#+end_src
+
+#+RESULTS:
+
+* Solution: read_csv
+
+#+begin_src jupyter-python :session main
+import pandas as pd
+from typing import List
+
+fieldnames = ["bag_id", "xmin", "ymin", "xmax", "ymax", "cat"]
+
+def read_csv(fn: Path) -> List[Box]:
+
+    frame = pd.read_csv(fn, names=fieldnames)
+    boxes = [Box(**r.to_dict()) for i, r in frame.iterrows()]
+    return boxes
+
+bl = read_csv(Path("./data/boxes.csv"))
+
+print(bl[:4])
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+# [goto error]
+: 
+: ModuleNotFoundErrorTraceback (most recent call last)
+: <ipython-input-29-1be78eed793f> in <module>()
+: ----> 1 import pandas as pd
+:       2 from typing import List
+:       3 
+:       4 fieldnames = ["bag_id", "xmin", "ymin", "xmax", "ymax", "cat"]
+:       5 
+: 
+: ModuleNotFoundError: No module named 'pandas'
+:END:
+
+* Solution: group_by
+
+#+begin_src jupyter-python :session main
+from typing import Dict
+from collections import defaultdict
+
+def group_by_building(boxes: List[Box], cat : str ="Kozijn") -> Dict[str, float]:
+    sums = defaultdict(float)
+    for box in boxes:
+        if box.cat == cat:
+           sums[box.bag_id] += box.area()
+    return sums
+
+sums = group_by_building(bl, "Deur")
+print(dict(list(sums.items())[:2]))
+len(sums)
+#+end_src
+
+#+RESULTS:
+:RESULTS:
+: {733100000003603: 25705.26065298915, 518100000287603: 40852.4586814791}
+: 11
+:END:
+
